@@ -1,6 +1,8 @@
 use regex::Regex;
-use std::{collections::HashMap, fs::read_to_string, i32, io::Error, usize};
+use std::{collections::HashMap, fs::read_to_string, i32, usize};
+use std::io::{Error, ErrorKind};
 
+#[derive(Debug)]
 pub struct ScoringMatrix {
     matrix: HashMap<(char, char), i32>,
 }
@@ -19,7 +21,13 @@ pub struct Aligner {
 
 impl ScoringMatrix {
     pub fn from_file(filename: &str) -> Result<ScoringMatrix, Error> {
-        let data = read_to_string(filename).unwrap();
+        let data: String = match read_to_string(filename) {
+            Ok(data) => data,
+            Err(e) => {
+                eprintln!("File does not exist: {filename}.");
+                return Err(e)
+            }
+        };
         let lines: Vec<&str> = data.lines().collect();
 
         // Create HashMap mapping indices in matrix to associated amino acid.
@@ -37,6 +45,10 @@ impl ScoringMatrix {
                 .find_iter(line)
                 .map(|s| s.as_str().parse().unwrap())
                 .collect();
+            if scores.len() != lines[2..].len() {
+                return Err(Error::new(ErrorKind::InvalidData, 
+                               format!("{}")))
+            }
             for score in scores {
                 matrix.insert((aa_map[&i], aa_map[&j]), score);
                 j += 1;
@@ -44,7 +56,7 @@ impl ScoringMatrix {
             i += 1;
             j = 0;
         }
-
+        
         Ok(ScoringMatrix { matrix })
     }
 
@@ -87,8 +99,8 @@ impl AlignmentResult {
                             self.traceback_matrix[i][j])
             }
         }
-        let mut a1: String = a1.chars().rev().collect();
-        let mut a2: String = a2.chars().rev().collect();
+        let a1: String = a1.chars().rev().collect();
+        let a2: String = a2.chars().rev().collect();
         (a1, a2)
     }
     
@@ -111,12 +123,14 @@ impl AlignmentResult {
 }
 
 impl Aligner {
-    pub fn new(scoring_matrix: &str, gap_open: i32) -> Self {
+    pub fn new(scoring_matrix: &str, gap_open: i32) -> Result<Self, Error> {
         let scorefile = format!("/Users/jonwells/Projects/fun/seqalign/data/{scoring_matrix}.txt");
-        Aligner {
-            scoring_matrix: ScoringMatrix::from_file(&scorefile).unwrap(),
+        let scoring_matrix = ScoringMatrix::from_file(&scorefile)?;
+        let aligner = Aligner {
+            scoring_matrix,
             gap_open,
-        }
+        };
+        Ok(aligner)
     }
 
     pub fn align(&self, s1: String, s2: String) -> AlignmentResult {
@@ -136,31 +150,18 @@ impl Aligner {
                 let indel_j = matrix[i][j-1] + self.gap_open;
                 
                 
-                // let maxval = vec![seqmatch, indel_i, indel_j, 0i32].iter().max();             
-                let maxval = 
-                    if let Some(v) = vec![seqmatch, indel_i, indel_j, 0i32].iter().max() {
-                        *v 
-                    } else {
-                        panic!("where did the values go?") 
-                    };
-
+                let maxval = *(vec![seqmatch, indel_i, indel_j, 0i32]
+                               .iter()
+                               .max()
+                               .expect("Vec will never be empty."));
                 matrix[i][j] = maxval;
-
-                if maxval == seqmatch {
-                   traceback_matrix[i][j] = 1;
-                } else if maxval == indel_i {
-                    traceback_matrix[i][j] = 2;
-                } else if maxval == indel_j {
-                    traceback_matrix[i][j] = 3;
-                } else {
-                    traceback_matrix[i][j] = 0
+                traceback_matrix[i][j] = match maxval {
+                    x if x == seqmatch => 1,
+                    x if x == indel_i  => 2,
+                    x if x == indel_j  => 3,
+                    0                  => 0,
+                    _                  => panic!("Unreachable value obtained: {:?}", maxval),
                 }
-                // match maxval {
-                //     seqmatch => traceback_matrix[i][j] = 1,
-                //     indel_i =>  traceback_matrix[i][j] = 2,
-                //     indel_j =>  traceback_matrix[i][j] = 3,
-                //     0 =>  traceback_matrix[i][j] = 0
-                // }
             }
         }
 
@@ -173,16 +174,18 @@ impl Aligner {
     }
 }
 
-fn main() {
-    let aligner = Aligner::new("BLOSUM62", -1);
-
+fn main() -> Result<(), Error> {
+    let aligner = Aligner::new("BLOSUM62", -5)?;
+    
     let aresult = aligner.align(
         String::from("HEAGHPAW"),
         String::from("HEWAGHQPAW")
     );
+
     let alignment = aresult.alignment();
+    println!("Alignment");
     println!("{}", alignment.0);
-    println!("{}", alignment.1);
+    println!("{}\n", alignment.1);
     
     println!("Scores");
     for i in 0..aresult.s1.len() {
@@ -191,12 +194,39 @@ fn main() {
         }
         println!("");
     } 
-    println!("");
-    println!("Traceback");
+    
+    println!("\nTraceback");
     for i in 0..aresult.s1.len() {
         for j in 0..aresult.s2.len() {
             print!("{} ", aresult.traceback_matrix[i][j]);
         }
         println!("");
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scoring_matrix_symmetry() {
+        let blosum62_file = "/Users/jonwells/Projects/fun/seqalign/data/BLOSUM62.txt";
+        let scoring_matrix = ScoringMatrix::from_file(blosum62_file).unwrap();
+        assert_eq!(scoring_matrix.get('A', 'R'), scoring_matrix.get('R', 'A'));
+    }
+    
+    #[test]
+    fn missing_blosum() {
+        let blosum62_file = "/Users/jonwells/Projects/fun/seqalign/data/nofile.txt";
+        let sm_err = ScoringMatrix::from_file(blosum62_file).unwrap_err();
+        assert_eq!(sm_err.kind(), ErrorKind::NotFound);
+    }
+    
+    #[test]
+    fn bad_blosum() {
+        let blosum62_file = "/Users/jonwells/Projects/fun/seqalign/data/BLOSUM62_bad.txt";
+        let sm_err = ScoringMatrix::from_file(blosum62_file).unwrap_err();
+        assert_eq!(sm_err.kind(), ErrorKind::InvalidData);
     }
 }
