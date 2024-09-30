@@ -3,7 +3,7 @@ use std::io::Error;
 use seqalign::Aligner;
 
 fn main() -> Result<(), Error> {
-    let aligner = Aligner::new("BLOSUM62", -5)?;
+    let aligner = Aligner::new("BLOSUM62", -5, 1)?;
 
     let aresult = aligner.align(String::from("HEAGHPAW"), String::from("HEWAGHQPAW"));
 

@@ -17,6 +17,7 @@ pub struct AlignmentResult {
 pub struct Aligner {
     scoring_matrix: ScoringMatrix,
     gap_open: i32,
+    gap_extend: i32,
 }
 
 impl ScoringMatrix {
@@ -71,8 +72,8 @@ impl AlignmentResult {
     }
 
     pub fn alignment(&self) -> (String, String) {
-        let mut a1 = String::new();
-        let mut a2 = String::new();
+        let mut a1: Vec<char> = Vec::new();
+        let mut a2: Vec<char> = Vec::new();
 
         let (mut i, mut j) = self.argmax();
         loop {
@@ -100,8 +101,8 @@ impl AlignmentResult {
                 ),
             }
         }
-        let a1: String = a1.chars().rev().collect();
-        let a2: String = a2.chars().rev().collect();
+        let a1: String = a1.iter().rev().collect();
+        let a2: String = a2.iter().rev().collect();
         (a1, a2)
     }
 
@@ -123,12 +124,13 @@ impl AlignmentResult {
 }
 
 impl Aligner {
-    pub fn new(scoring_matrix: &str, gap_open: i32) -> Result<Self, Error> {
+    pub fn new(scoring_matrix: &str, gap_open: i32, gap_extend: i32) -> Result<Self, Error> {
         let scorefile = format!("/Users/jonwells/Projects/fun/seqalign/data/{scoring_matrix}.txt");
         let scoring_matrix = ScoringMatrix::from_file(&scorefile)?;
         let aligner = Aligner {
             scoring_matrix,
             gap_open,
+            gap_extend
         };
         Ok(aligner)
     }
@@ -140,26 +142,38 @@ impl Aligner {
         let m = s1.len();
         let n = s2.len();
 
-        let mut matrix = vec![vec![0i32; n + 1]; m + 1];
+        let mut f = vec![vec![0i32; n + 1]; m + 1];
+        let mut g = vec![vec![0i32; n + 1]; m + 1];
+        let mut h = vec![vec![0i32; n + 1]; m + 1];
+
         let mut traceback_matrix = vec![vec![0u8; n + 1]; m + 1];
+
+        fn calc_max(values: Vec<i32>) -> i32 {
+            let maxval: &i32 = values
+                .iter()
+                .max()
+                .expect("vector will never be empty.");
+            *maxval
+        }
 
         for i in 1..m + 1 {
             for j in 1..n + 1 {
-                let seqmatch = matrix[i - 1][j - 1] + self.scoring_matrix.get(s1[i - 1], s2[j - 1]);
-                let indel_i = matrix[i - 1][j] + self.gap_open;
-                let indel_j = matrix[i][j - 1] + self.gap_open;
+                let seqmatch = f[i - 1][j - 1] + self.scoring_matrix.get(s1[i - 1], s2[j - 1]);
+                let open_i = f[i - 1][j] + self.gap_open;
+                let open_j = f[i][j - 1] + self.gap_open;
+                let extend_i = g[i - 1][j] + self.gap_extend;
+                let extend_j = h[i][j - 1] + self.gap_extend;
 
-                let maxval = *(vec![seqmatch, indel_i, indel_j, 0i32]
-                    .iter()
-                    .max()
-                    .expect("Vec will never be empty."));
-                matrix[i][j] = maxval;
-                traceback_matrix[i][j] = match maxval {
+                g[i][j] = calc_max(vec![open_i, extend_i]);
+                h[i][j] = calc_max(vec![open_j, extend_j]);
+                f[i][j] = calc_max(vec![seqmatch, g[i][j], h[i][j], 0i32]);
+                
+                traceback_matrix[i][j] = match f[i][j] {
                     x if x == seqmatch => 1,
-                    x if x == indel_i => 2,
-                    x if x == indel_j => 3,
+                    x if x == g[i][j] => 2,
+                    x if x == h[i][j] => 3,
                     0 => 0,
-                    _ => panic!("Unreachable value obtained: {:?}", maxval),
+                    _ => panic!("Unreachable value obtained: {:?}", f[i][j]),
                 }
             }
         }
@@ -167,7 +181,7 @@ impl Aligner {
         AlignmentResult {
             s1,
             s2,
-            matrix,
+            matrix: f,
             traceback_matrix,
         }
     }
