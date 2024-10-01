@@ -140,8 +140,8 @@ impl AlignmentResult {
 
         for i in 1..self.s1.len() + 1 {
             for j in 1..self.s2.len() + 1 {
-                if self.matrix[i][j] > score {
-                    score += self.matrix[i][j];
+                if self.matrix[i][j] >= score {
+                    score = self.matrix[i][j];
                     idx = (i, j);
                 }
             }
@@ -162,7 +162,7 @@ impl Aligner {
         Ok(aligner)
     }
 
-    pub fn align(&self, s1: String, s2: String) -> AlignmentResult {
+    pub fn align(&self, s1: &String, s2: &String) -> AlignmentResult {
         let s1: Vec<char> = s1.chars().collect();
         let s2: Vec<char> = s2.chars().collect();
 
@@ -186,10 +186,10 @@ impl Aligner {
         for i in 1..m + 1 {
             for j in 1..n + 1 {
                 let seqmatch = f[i - 1][j - 1] + self.scoring_matrix.get(s1[i - 1], s2[j - 1]);
-                let open_i = f[i - 1][j] + self.gap_open;
-                let open_j = f[i][j - 1] + self.gap_open;
-                let extend_i = g[i - 1][j] + self.gap_extend;
-                let extend_j = h[i][j - 1] + self.gap_extend;
+                let open_i = f[i - 1][j] - self.gap_open;
+                let open_j = f[i][j - 1] - self.gap_open;
+                let extend_i = g[i - 1][j] - self.gap_extend;
+                let extend_j = h[i][j - 1] - self.gap_extend;
 
                 g[i][j] = calc_max(vec![open_i, extend_i]);
                 h[i][j] = calc_max(vec![open_j, extend_j]);
@@ -237,5 +237,12 @@ mod tests {
         let blosum62_file = "./resources/BLOSUM62_malformatted.txt";
         let sm_err = ScoringMatrix::from_file(blosum62_file).unwrap_err();
         assert_eq!(sm_err.kind(), ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn max_score() {
+        let aligner = Aligner::new("BLOSUM62", 0, 0).unwrap();
+        let alignment = aligner.align(&String::from("RRRRR"), &String::from("RRRRR"));
+        assert_eq!(alignment.max_score(), 25);
     }
 }
