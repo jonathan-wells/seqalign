@@ -21,6 +21,27 @@ pub struct Aligner {
 }
 
 impl ScoringMatrix {
+    pub fn new(scoring_matrix: &str) -> Result<ScoringMatrix, Error> {
+        match scoring_matrix {
+            "BLOSUM30" => ScoringMatrix::from_file("./resources/BLOSUM30"),
+            "BLOSUM35" => ScoringMatrix::from_file("./resources/BLOSUM35"),
+            "BLOSUM40" => ScoringMatrix::from_file("./resources/BLOSUM40"),
+            "BLOSUM45" => ScoringMatrix::from_file("./resources/BLOSUM45"),
+            "BLOSUM50" => ScoringMatrix::from_file("./resources/BLOSUM50"),
+            "BLOSUM55" => ScoringMatrix::from_file("./resources/BLOSUM55"),
+            "BLOSUM60" => ScoringMatrix::from_file("./resources/BLOSUM60"),
+            "BLOSUM62" => ScoringMatrix::from_file("./resources/BLOSUM62"),
+            "BLOSUM65" => ScoringMatrix::from_file("./resources/BLOSUM65"),
+            "BLOSUM70" => ScoringMatrix::from_file("./resources/BLOSUM70"),
+            "BLOSUM75" => ScoringMatrix::from_file("./resources/BLOSUM75"),
+            "BLOSUM80" => ScoringMatrix::from_file("./resources/BLOSUM80"),
+            "BLOSUM85" => ScoringMatrix::from_file("./resources/BLOSUM85"),
+            "BLOSUM90" => ScoringMatrix::from_file("./resources/BLOSUM90"),
+            "BLOSUM100" => ScoringMatrix::from_file("./resources/BLOSUM100"),
+            _ => Err(Error::new(ErrorKind::InvalidInput, format!("{scoring_matrix} not implemented."))),
+        }
+    }
+
     pub fn from_file(filename: &str) -> Result<ScoringMatrix, Error> {
         let data: String = match read_to_string(filename) {
             Ok(data) => data,
@@ -29,11 +50,11 @@ impl ScoringMatrix {
                 return Err(e);
             }
         };
-        let lines: Vec<&str> = data.lines().collect();
-
+        let lines: Vec<&str> = data.lines().filter(|l| !l.contains('#')).collect();
+        
         // Create HashMap mapping indices in matrix to associated amino acid.
         let aa_map: HashMap<usize, char> =
-            lines[1].chars().filter(|c| *c != ' ').enumerate().collect();
+            lines[0].chars().filter(|c| *c != ' ').enumerate().collect();
 
         // Create HashMap of amino acid pairs to scores
         let mut matrix: HashMap<(char, char), i32> = HashMap::new();
@@ -41,12 +62,12 @@ impl ScoringMatrix {
 
         let mut i = 0;
         let mut j = 0;
-        for line in &lines[2..] {
+        for line in &lines[1..] {
             let scores: Vec<i32> = score_re
                 .find_iter(line)
                 .map(|s| s.as_str().parse().unwrap())
                 .collect();
-            if scores.len() != lines[2..].len() {
+            if scores.len() != lines[1..].len() {
                 return Err(Error::new(ErrorKind::InvalidData, format!("Dimensions of data are invalid: {filename}")));
             }
             for score in scores {
@@ -125,8 +146,7 @@ impl AlignmentResult {
 
 impl Aligner {
     pub fn new(scoring_matrix: &str, gap_open: i32, gap_extend: i32) -> Result<Self, Error> {
-        let scorefile = format!("/Users/jonwells/Projects/fun/seqalign/data/{scoring_matrix}.txt");
-        let scoring_matrix = ScoringMatrix::from_file(&scorefile)?;
+        let scoring_matrix = ScoringMatrix::new(scoring_matrix)?;
         let aligner = Aligner {
             scoring_matrix,
             gap_open,
@@ -193,21 +213,21 @@ mod tests {
 
     #[test]
     fn scoring_matrix_symmetry() {
-        let blosum62_file = "/Users/jonwells/Projects/fun/seqalign/data/BLOSUM62.txt";
+        let blosum62_file = "./resources/BLOSUM62";
         let scoring_matrix = ScoringMatrix::from_file(blosum62_file).unwrap();
         assert_eq!(scoring_matrix.get('A', 'R'), scoring_matrix.get('R', 'A'));
     }
 
     #[test]
     fn missing_blosum() {
-        let blosum62_file = "/Users/jonwells/Projects/fun/seqalign/data/nofile.txt";
+        let blosum62_file = "./resources/nofile.txt";
         let sm_err = ScoringMatrix::from_file(blosum62_file).unwrap_err();
         assert_eq!(sm_err.kind(), ErrorKind::NotFound);
     }
 
     #[test]
     fn bad_blosum() {
-        let blosum62_file = "/Users/jonwells/Projects/fun/seqalign/data/BLOSUM62_bad.txt";
+        let blosum62_file = "./resources/BLOSUM62_malformatted.txt";
         let sm_err = ScoringMatrix::from_file(blosum62_file).unwrap_err();
         assert_eq!(sm_err.kind(), ErrorKind::InvalidData);
     }
