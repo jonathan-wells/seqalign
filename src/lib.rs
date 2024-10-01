@@ -2,6 +2,9 @@ use regex::Regex;
 use std::io::{Error, ErrorKind};
 use std::{collections::HashMap, fs::read_to_string, i32, usize};
 
+pub mod constants;
+use crate::constants::*;
+
 #[derive(Debug)]
 pub struct ScoringMatrix {
     matrix: HashMap<(char, char), i32>,
@@ -21,36 +24,29 @@ pub struct Aligner {
 }
 
 impl ScoringMatrix {
-    pub fn new(scoring_matrix: &str) -> Result<ScoringMatrix, Error> {
+    pub fn new(scoring_matrix: &str) -> Result<Self, Error> {
         match scoring_matrix {
-            "BLOSUM30" => ScoringMatrix::from_file("./resources/BLOSUM30"),
-            "BLOSUM35" => ScoringMatrix::from_file("./resources/BLOSUM35"),
-            "BLOSUM40" => ScoringMatrix::from_file("./resources/BLOSUM40"),
-            "BLOSUM45" => ScoringMatrix::from_file("./resources/BLOSUM45"),
-            "BLOSUM50" => ScoringMatrix::from_file("./resources/BLOSUM50"),
-            "BLOSUM55" => ScoringMatrix::from_file("./resources/BLOSUM55"),
-            "BLOSUM60" => ScoringMatrix::from_file("./resources/BLOSUM60"),
-            "BLOSUM62" => ScoringMatrix::from_file("./resources/BLOSUM62"),
-            "BLOSUM65" => ScoringMatrix::from_file("./resources/BLOSUM65"),
-            "BLOSUM70" => ScoringMatrix::from_file("./resources/BLOSUM70"),
-            "BLOSUM75" => ScoringMatrix::from_file("./resources/BLOSUM75"),
-            "BLOSUM80" => ScoringMatrix::from_file("./resources/BLOSUM80"),
-            "BLOSUM85" => ScoringMatrix::from_file("./resources/BLOSUM85"),
-            "BLOSUM90" => ScoringMatrix::from_file("./resources/BLOSUM90"),
-            "BLOSUM100" => ScoringMatrix::from_file("./resources/BLOSUM100"),
+            "BLOSUM30" => ScoringMatrix::from_str(BLOSUM30),
+            "BLOSUM35" => ScoringMatrix::from_str(BLOSUM35),
+            "BLOSUM40" => ScoringMatrix::from_str(BLOSUM40),
+            "BLOSUM45" => ScoringMatrix::from_str(BLOSUM45),
+            "BLOSUM50" => ScoringMatrix::from_str(BLOSUM50),
+            "BLOSUM55" => ScoringMatrix::from_str(BLOSUM55),
+            "BLOSUM60" => ScoringMatrix::from_str(BLOSUM60),
+            "BLOSUM62" => ScoringMatrix::from_str(BLOSUM62),
+            "BLOSUM65" => ScoringMatrix::from_str(BLOSUM65),
+            "BLOSUM70" => ScoringMatrix::from_str(BLOSUM70),
+            "BLOSUM75" => ScoringMatrix::from_str(BLOSUM75),
+            "BLOSUM80" => ScoringMatrix::from_str(BLOSUM80),
+            "BLOSUM85" => ScoringMatrix::from_str(BLOSUM85),
+            "BLOSUM90" => ScoringMatrix::from_str(BLOSUM90),
+            "BLOSUM100" => ScoringMatrix::from_str(BLOSUM100),
             _ => Err(Error::new(ErrorKind::InvalidInput, format!("{scoring_matrix} not implemented."))),
         }
     }
-
-    pub fn from_file(filename: &str) -> Result<ScoringMatrix, Error> {
-        let data: String = match read_to_string(filename) {
-            Ok(data) => data,
-            Err(e) => {
-                eprintln!("File does not exist: {filename}.");
-                return Err(e);
-            }
-        };
-        let lines: Vec<&str> = data.lines().filter(|l| !l.contains('#')).collect();
+        
+    fn from_str(input_string: &str) -> Result<Self, Error> {
+        let lines: Vec<&str> = input_string.lines().filter(|l| !l.contains('#')).collect();
         
         // Create HashMap mapping indices in matrix to associated amino acid.
         let aa_map: HashMap<usize, char> =
@@ -68,7 +64,7 @@ impl ScoringMatrix {
                 .map(|s| s.as_str().parse().unwrap())
                 .collect();
             if scores.len() != lines[1..].len() {
-                return Err(Error::new(ErrorKind::InvalidData, format!("Dimensions of data are invalid: {filename}")));
+                return Err(Error::new(ErrorKind::InvalidData, "Dimensions of data are invalid"));
             }
             for score in scores {
                 matrix.insert((aa_map[&i], aa_map[&j]), score);
@@ -79,6 +75,17 @@ impl ScoringMatrix {
         }
 
         Ok(ScoringMatrix { matrix })
+    }
+    
+    pub fn from_file(filename: &str) -> Result<Self, Error> {
+        let data: String = match read_to_string(filename) {
+            Ok(data) => data,
+            Err(e) => {
+                eprintln!("File does not exist: {filename}.");
+                return Err(e);
+            }
+        };
+        Self::from_str(data.as_str())
     }
 
     pub fn get(&self, a: char, b: char) -> i32 {
