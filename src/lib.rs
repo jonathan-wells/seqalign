@@ -1,15 +1,24 @@
+//! Pairwise Sequence Alignment.
+//!
+//! Provides a library of tools that can be used to perform pairwise sequence alignment of protein
+//! sequences. Currently only implements Smith-Waterman local alignment with affine gap penalty
+//! (Gotoh), but this may be extended in the future.
+
 use regex::Regex;
 use std::io::{Error, ErrorKind};
 use std::{collections::HashMap, fs::read_to_string, i32, usize};
 
+/// This module provides static strings for each BLOSUM matrix.
 pub mod constants;
 use crate::constants::*;
 
+/// Stores matrices of amino acid pair transition scores (1/2 Bit units).
 #[derive(Debug)]
 pub struct ScoringMatrix {
     matrix: HashMap<(char, char), i32>,
 }
 
+/// Stores the results of a pairwise sequence alingment
 pub struct AlignmentResult {
     pub s1: Vec<char>,
     pub s2: Vec<char>,
@@ -17,6 +26,7 @@ pub struct AlignmentResult {
     pub traceback_matrix: Vec<Vec<u8>>,
 }
 
+/// Holds the scoring system and methodds required to generate alignments.
 pub struct Aligner {
     scoring_matrix: ScoringMatrix,
     gap_open: i32,
@@ -24,6 +34,18 @@ pub struct Aligner {
 }
 
 impl ScoringMatrix {
+
+    /// Creates a new scoring matrix from set of available options.
+    ///
+    /// TODO: Possibly a cleaner way to do this would be to load statics in arrays, then access
+    /// them based on HashMap from chars to scoring matrix indeces. This way you don't have to 
+    /// parse from strings every time. On the other hand, this implementation only adds a fixed 
+    /// constant to the runtime, I think.
+    ///
+    /// # Example:
+    /// ```
+    /// let scoring_matrix = ScoringMatrix::new("BLOSUM62");
+    /// ```
     pub fn new(scoring_matrix: &str) -> Result<Self, Error> {
         match scoring_matrix {
             "BLOSUM30" => ScoringMatrix::from_str(BLOSUM30),
@@ -44,9 +66,10 @@ impl ScoringMatrix {
             _ => Err(Error::new(ErrorKind::InvalidInput, format!("{scoring_matrix} not implemented."))),
         }
     }
-        
+    
+    /// Creates new Scoring Matrix instance from a &str.
     fn from_str(input_string: &str) -> Result<Self, Error> {
-        let lines: Vec<&str> = input_string.lines().filter(|l| !l.contains('#')).collect();
+        let lines: Vec<&str> = input_string.lines().filter(|l| !l.contains('#')).collect(); 
         
         // Create HashMap mapping indices in matrix to associated amino acid.
         let aa_map: HashMap<usize, char> =
@@ -77,6 +100,12 @@ impl ScoringMatrix {
         Ok(ScoringMatrix { matrix })
     }
     
+    /// Parses scoring matrix file and returns instance of ScoringMatrix.
+    ///
+    /// # Example:
+    /// ```
+    /// let scoring_matrix = ScoringMatrix::from_file("./PAM50.txt");
+    /// ```
     pub fn from_file(filename: &str) -> Result<Self, Error> {
         let data: String = match read_to_string(filename) {
             Ok(data) => data,
@@ -88,17 +117,23 @@ impl ScoringMatrix {
         Self::from_str(data.as_str())
     }
 
+    /// Extracts score for given pair of amino acids.
+    /// 
+    /// The success of this operation is only guaranteed by earlier checks on appropriate input
+    /// sequences. 
     pub fn get(&self, a: char, b: char) -> i32 {
         self.matrix[&(a, b)]
     }
 }
 
 impl AlignmentResult {
+    /// Returns the score of the optimal alignment.
     pub fn max_score(&self) -> i32 {
         let idx = self.argmax();
         self.matrix[idx.0][idx.1]
     }
-
+    
+    /// Returns the pair of sequences corresponding to the optimal alignment.
     pub fn alignment(&self) -> (String, String) {
         let mut a1: Vec<char> = Vec::new();
         let mut a2: Vec<char> = Vec::new();
@@ -133,7 +168,8 @@ impl AlignmentResult {
         let a2: String = a2.iter().rev().collect();
         (a1, a2)
     }
-
+    
+    /// Return the indices of the top score in the "f" result matrix.
     fn argmax(&self) -> (usize, usize) {
         let mut score: i32 = 0;
         let mut idx: (usize, usize) = (0, 0);
@@ -152,6 +188,7 @@ impl AlignmentResult {
 }
 
 impl Aligner {
+    /// Creates new Aligner instance from given scoring system.
     pub fn new(scoring_matrix: &str, gap_open: i32, gap_extend: i32) -> Result<Self, Error> {
         let scoring_matrix = ScoringMatrix::new(scoring_matrix)?;
         let aligner = Aligner {
@@ -162,6 +199,7 @@ impl Aligner {
         Ok(aligner)
     }
 
+    /// Returns Smith-Waterman local alignment of two sequences.
     pub fn align(&self, s1: &String, s2: &String) -> AlignmentResult {
         let s1: Vec<char> = s1.chars().collect();
         let s2: Vec<char> = s2.chars().collect();

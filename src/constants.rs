@@ -1,3 +1,4 @@
+// Define static strings for all implemented BLOSUM scoring matrices. 
 pub static BLOSUM30: &'static str = include_str!("../resources/BLOSUM30");
 pub static BLOSUM35: &'static str = include_str!("../resources/BLOSUM35");
 pub static BLOSUM40: &'static str = include_str!("../resources/BLOSUM40");
