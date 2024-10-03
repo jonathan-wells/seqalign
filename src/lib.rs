@@ -4,6 +4,8 @@
 //! sequences. Currently only implements Smith-Waterman local alignment with affine gap penalty
 //! (Gotoh), but this may be extended in the future.
 
+#![allow(dead_code)]
+
 use regex::Regex;
 use std::io::{Error, ErrorKind};
 use std::{collections::HashMap, fs::read_to_string, i32, usize};
@@ -12,25 +14,48 @@ use std::{collections::HashMap, fs::read_to_string, i32, usize};
 pub mod constants;
 use crate::constants::*;
 
+pub struct FastaRecord {
+    name: String,
+    seq: String,
+}
+
+impl FastaRecord {
+    pub fn from_str(input: &str) -> Result<Self, Error> {
+        let record_re = Regex::new(r"(?ms)>(\w+)\n(.+)").unwrap();
+        let Some(caps) = record_re.captures(input) else {
+            println!("{input}");
+            return Err(Error::new(ErrorKind::InvalidData, "Invalid fasta string."))
+        };
+        let name = (&caps[1]).to_string();
+        let mut seq = (&caps[2]).to_string();
+        seq.retain(|c| c != '\n');
+        Ok(FastaRecord{ name, seq })
+    }
+}
+
+pub fn parse_fastafile(filename: &str) -> Result<Vec<FastaRecord>, Error> {
+    let data = read_to_string(filename);
+    let data = match data {
+        Ok(data) => data,
+        Err(_) => return Err(Error::new(ErrorKind::NotFound, format!("{filename} does not exist")))
+    };
+    let fasta_re = Regex::new(r"(?ms)(>[\w\n\*]+)").unwrap();
+    let mut fastas: Vec<FastaRecord> = Vec::new();
+    for cap in fasta_re.captures_iter(&data) {
+        println!("{}", &cap[0]);
+        let fasta_record = FastaRecord::from_str(&(&cap[0].to_string()));
+        match fasta_record {
+            Ok(fr) => fastas.push(fr),
+            Err(e) => return Err(e)
+        };
+    }
+    Ok(fastas)
+}
+
 /// Stores matrices of amino acid pair transition scores (1/2 Bit units).
 #[derive(Debug)]
 pub struct ScoringMatrix {
     matrix: HashMap<(char, char), i32>,
-}
-
-/// Stores the results of a pairwise sequence alingment
-pub struct AlignmentResult {
-    pub s1: Vec<char>,
-    pub s2: Vec<char>,
-    pub matrix: Vec<Vec<i32>>,
-    pub traceback_matrix: Vec<Vec<u8>>,
-}
-
-/// Holds the scoring system and methodds required to generate alignments.
-pub struct Aligner {
-    scoring_matrix: ScoringMatrix,
-    gap_open: i32,
-    gap_extend: i32,
 }
 
 impl ScoringMatrix {
@@ -44,6 +69,7 @@ impl ScoringMatrix {
     ///
     /// # Example:
     /// ```
+    /// use seqalign::ScoringMatrix;
     /// let scoring_matrix = ScoringMatrix::new("BLOSUM62");
     /// ```
     pub fn new(scoring_matrix: &str) -> Result<Self, Error> {
@@ -104,6 +130,7 @@ impl ScoringMatrix {
     ///
     /// # Example:
     /// ```
+    /// use seqalign::ScoringMatrix;
     /// let scoring_matrix = ScoringMatrix::from_file("./PAM50.txt");
     /// ```
     pub fn from_file(filename: &str) -> Result<Self, Error> {
@@ -124,6 +151,14 @@ impl ScoringMatrix {
     pub fn get(&self, a: char, b: char) -> i32 {
         self.matrix[&(a, b)]
     }
+}
+
+/// Stores the results of a pairwise sequence alingment
+pub struct AlignmentResult {
+    pub s1: Vec<char>,
+    pub s2: Vec<char>,
+    pub matrix: Vec<Vec<i32>>,
+    pub traceback_matrix: Vec<Vec<u8>>,
 }
 
 impl AlignmentResult {
@@ -185,6 +220,13 @@ impl AlignmentResult {
 
         idx
     }
+}
+
+/// Holds the scoring system and methodds required to generate alignments.
+pub struct Aligner {
+    scoring_matrix: ScoringMatrix,
+    gap_open: i32,
+    gap_extend: i32,
 }
 
 impl Aligner {
@@ -282,5 +324,22 @@ mod tests {
         let aligner = Aligner::new("BLOSUM62", 0, 0).unwrap();
         let alignment = aligner.align(&String::from("RRRRR"), &String::from("RRRRR"));
         assert_eq!(alignment.max_score(), 25);
+    }
+    
+    #[test]
+    fn fasta_from_string() {
+        let fastastring = ">record\nACTG\nGTCA";
+        let fasta_record = FastaRecord::from_str(fastastring).unwrap();
+        assert_eq!(String::from("record"), fasta_record.name);
+        assert_eq!(String::from("ACTGGTCA"), fasta_record.seq);
+    }
+    
+    #[test]
+    fn parse_fasta_file() {
+        let fasta_records = parse_fastafile("./resources/test_fasta.fa").unwrap();
+        assert_eq!(String::from("record1"), fasta_records[0].name);
+        assert_eq!(String::from("ACTGGCTA"), fasta_records[0].seq);
+        assert_eq!(String::from("record2"), fasta_records[1].name);
+        assert_eq!(String::from("TGCA*ACGT"), fasta_records[1].seq);
     }
 }
