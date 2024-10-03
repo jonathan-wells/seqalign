@@ -15,15 +15,14 @@ pub mod constants;
 use crate::constants::*;
 
 pub struct FastaRecord {
-    name: String,
-    seq: String,
+    pub name: String,
+    pub seq: String,
 }
 
 impl FastaRecord {
     pub fn from_str(input: &str) -> Result<Self, Error> {
         let record_re = Regex::new(r"(?ms)>(\w+)\n(.+)").unwrap();
         let Some(caps) = record_re.captures(input) else {
-            println!("{input}");
             return Err(Error::new(ErrorKind::InvalidData, "Invalid fasta string."))
         };
         let name = (&caps[1]).to_string();
@@ -42,7 +41,6 @@ pub fn parse_fastafile(filename: &str) -> Result<Vec<FastaRecord>, Error> {
     let fasta_re = Regex::new(r"(?ms)(>[\w\n\*]+)").unwrap();
     let mut fastas: Vec<FastaRecord> = Vec::new();
     for cap in fasta_re.captures_iter(&data) {
-        println!("{}", &cap[0]);
         let fasta_record = FastaRecord::from_str(&(&cap[0].to_string()));
         match fasta_record {
             Ok(fr) => fastas.push(fr),

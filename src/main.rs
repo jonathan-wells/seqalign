@@ -1,31 +1,45 @@
 use std::io::Error;
+use clap::Parser;
 
-use seqalign::Aligner;
+use seqalign::{Aligner, parse_fastafile};
+
+#[derive(Parser, Debug)]
+#[command(version, about)]
+struct Args {
+    #[arg(short, long)]
+    asequence: String,
+
+    #[arg(short, long)]
+    bsequence: String,
+
+    #[arg(short, long)]
+    scoring_matrix: String,
+
+    #[arg(short, long)]
+    open_penalty: i32,
+
+    #[arg(short, long)]
+    extension_penalty: i32,
+}
 
 fn main() -> Result<(), Error> {
-    let aligner = Aligner::new("BLOSUM62", -5, 1)?;
+    let args = Args::parse();
 
-    let aresult = aligner.align(String::from("HEAGHPAW"), String::from("HEWAGHQPAW"));
-
+    let aligner = Aligner::new(
+        args.scoring_matrix.as_str(),
+        args.open_penalty,
+        args.extension_penalty
+        )?;
+    
+    let arecords = parse_fastafile(&args.asequence)?;
+    let brecords = parse_fastafile(&args.bsequence)?;
+    let asequence = &arecords[0];
+    let bsequence = &brecords[0];
+    let aresult = aligner.align(&asequence.seq, &bsequence.seq);
+    
     let alignment = aresult.alignment();
-    println!("Alignment");
-    println!("{}", alignment.0);
-    println!("{}\n", alignment.1);
-
-    println!("Scores");
-    for i in 0..aresult.s1.len() {
-        for j in 0..aresult.s2.len() {
-            print!("{:3} ", aresult.matrix[i][j]);
-        }
-        println!("");
-    }
-
-    println!("\nTraceback");
-    for i in 0..aresult.s1.len() {
-        for j in 0..aresult.s2.len() {
-            print!("{} ", aresult.traceback_matrix[i][j]);
-        }
-        println!("");
-    }
+    println!(">{}\n{}", asequence.name, alignment.0);
+    println!(">{}\n{}", bsequence.name, alignment.1);
+    
     Ok(())
 }
