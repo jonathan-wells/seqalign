@@ -4,8 +4,6 @@
 //! sequences. Currently only implements Smith-Waterman local alignment with affine gap penalty
 //! (Gotoh), but this may be extended in the future.
 
-#![allow(dead_code)]
-
 use regex::Regex;
 use std::io::{Error, ErrorKind};
 use std::{collections::HashMap, fs::read_to_string, i32, usize};
@@ -14,12 +12,14 @@ use std::{collections::HashMap, fs::read_to_string, i32, usize};
 pub mod constants;
 use crate::constants::*;
 
+/// Record for single fasta sequence
 pub struct FastaRecord {
     pub name: String,
     pub seq: String,
 }
 
 impl FastaRecord {
+    /// Convert from input fasta string to FastaRecord
     pub fn from_str(input: &str) -> Result<Self, Error> {
         let record_re = Regex::new(r"(?ms)>(\w+)\n(.+)").unwrap();
         let Some(caps) = record_re.captures(input) else {
@@ -30,8 +30,14 @@ impl FastaRecord {
         seq.retain(|c| c != '\n');
         Ok(FastaRecord{ name, seq })
     }
+    
+    /// Returns length of sequence in record
+    pub fn len(&self) -> u32 {
+        self.seq.len() as u32
+    }
 }
 
+/// Given a filename, returns a vector of FastaRecords.
 pub fn parse_fastafile(filename: &str) -> Result<Vec<FastaRecord>, Error> {
     let data = read_to_string(filename);
     let data = match data {
@@ -153,10 +159,10 @@ impl ScoringMatrix {
 
 /// Stores the results of a pairwise sequence alingment
 pub struct AlignmentResult {
-    pub s1: Vec<char>,
-    pub s2: Vec<char>,
-    pub matrix: Vec<Vec<i32>>,
-    pub traceback_matrix: Vec<Vec<u8>>,
+    query: Vec<char>,
+    target: Vec<char>,
+    matrix: Vec<Vec<i32>>,
+    traceback_matrix: Vec<Vec<u8>>,
 }
 
 impl AlignmentResult {
@@ -176,17 +182,17 @@ impl AlignmentResult {
             match self.traceback_matrix[i][j] {
                 3 => {
                     a1.push('-');
-                    a2.push(self.s2[j - 1]);
+                    a2.push(self.target[j - 1]);
                     j -= 1
                 }
                 2 => {
-                    a1.push(self.s1[i - 1]);
+                    a1.push(self.query[i - 1]);
                     a2.push('-');
                     i -= 1
                 }
                 1 => {
-                    a1.push(self.s1[i - 1]);
-                    a2.push(self.s2[j - 1]);
+                    a1.push(self.query[i - 1]);
+                    a2.push(self.target[j - 1]);
                     i -= 1;
                     j -= 1;
                 }
@@ -207,8 +213,8 @@ impl AlignmentResult {
         let mut score: i32 = 0;
         let mut idx: (usize, usize) = (0, 0);
 
-        for i in 1..self.s1.len() + 1 {
-            for j in 1..self.s2.len() + 1 {
+        for i in 1..self.query.len() + 1 {
+            for j in 1..self.target.len() + 1 {
                 if self.matrix[i][j] >= score {
                     score = self.matrix[i][j];
                     idx = (i, j);
@@ -240,12 +246,12 @@ impl Aligner {
     }
 
     /// Returns Smith-Waterman local alignment of two sequences.
-    pub fn align(&self, s1: &String, s2: &String) -> AlignmentResult {
-        let s1: Vec<char> = s1.chars().collect();
-        let s2: Vec<char> = s2.chars().collect();
+    pub fn align(&self, query: &str, target: &str) -> AlignmentResult {
+        let query: Vec<char> = query.chars().collect();
+        let target: Vec<char> = target.chars().collect();
 
-        let m = s1.len();
-        let n = s2.len();
+        let m = query.len();
+        let n = target.len();
 
         let mut f = vec![vec![0i32; n + 1]; m + 1];
         let mut g = vec![vec![0i32; n + 1]; m + 1];
@@ -263,7 +269,7 @@ impl Aligner {
 
         for i in 1..m + 1 {
             for j in 1..n + 1 {
-                let seqmatch = f[i - 1][j - 1] + self.scoring_matrix.get(s1[i - 1], s2[j - 1]);
+                let seqmatch = f[i - 1][j - 1] + self.scoring_matrix.get(query[i - 1], target[j - 1]);
                 let open_i = f[i - 1][j] - self.gap_open;
                 let open_j = f[i][j - 1] - self.gap_open;
                 let extend_i = g[i - 1][j] - self.gap_extend;
@@ -278,14 +284,14 @@ impl Aligner {
                     x if x == g[i][j] => 2,
                     x if x == h[i][j] => 3,
                     0 => 0,
-                    _ => panic!("Unreachable value obtained: {:?}", f[i][j]),
+                    _ => panic!("Unexpected value encountered in traceback: {:?}", f[i][j]),
                 }
             }
         }
 
         AlignmentResult {
-            s1,
-            s2,
+            query,
+            target,
             matrix: f,
             traceback_matrix,
         }
@@ -330,6 +336,13 @@ mod tests {
         let fasta_record = FastaRecord::from_str(fastastring).unwrap();
         assert_eq!(String::from("record"), fasta_record.name);
         assert_eq!(String::from("ACTGGTCA"), fasta_record.seq);
+    }
+    
+    #[test]
+    fn fasta_seqlen() {
+        let fastastring = ">record\nACTG\nGTCA";
+        let fasta_record = FastaRecord::from_str(fastastring).unwrap();
+        assert_eq!(fasta_record.len(), 8);
     }
     
     #[test]
