@@ -6,7 +6,7 @@
 
 use regex::Regex;
 use std::io::{Error, ErrorKind};
-use std::{collections::HashMap, fs::read_to_string, i32, usize};
+use std::{collections::HashMap, fs::read_to_string, str::FromStr};
 
 /// This module provides static strings for each BLOSUM matrix.
 pub mod constants;
@@ -18,19 +18,22 @@ pub struct FastaRecord {
     pub seq: String,
 }
 
-impl FastaRecord {
+impl FromStr for FastaRecord {
+    type Err = Error; 
     /// Convert from input fasta string to FastaRecord
-    pub fn from_str(input: &str) -> Result<Self, Error> {
-        let record_re = Regex::new(r"(?ms)>(\w+)\n(.+)").unwrap();
-        let Some(caps) = record_re.captures(input) else {
-            return Err(Error::new(ErrorKind::InvalidData, "Invalid fasta string."))
+    fn from_str(s: &str) -> Result<Self, Error> {
+        let record_re = Regex::new(r"(?ms)>(\S+)[^\n]*\n(.+)").unwrap();
+        let Some(caps) = record_re.captures(s) else {
+            return Err(Error::new(ErrorKind::InvalidData, format!("Invalid fasta string.\n{s}")))
         };
-        let name = (&caps[1]).to_string();
-        let mut seq = (&caps[2]).to_string();
+        let name = caps[1].to_string();
+        let mut seq = caps[2].to_string();
         seq.retain(|c| c != '\n');
         Ok(FastaRecord{ name, seq })
     }
-    
+}
+
+impl FastaRecord {
     /// Returns length of sequence in record
     pub fn len(&self) -> u32 {
         self.seq.len() as u32
@@ -44,10 +47,10 @@ pub fn parse_fastafile(filename: &str) -> Result<Vec<FastaRecord>, Error> {
         Ok(data) => data,
         Err(_) => return Err(Error::new(ErrorKind::NotFound, format!("{filename} does not exist")))
     };
-    let fasta_re = Regex::new(r"(?ms)(>[\w\n\*]+)").unwrap();
+    let fasta_re = Regex::new(r"(?ms)(>[^>]+)").unwrap();
     let mut fastas: Vec<FastaRecord> = Vec::new();
     for cap in fasta_re.captures_iter(&data) {
-        let fasta_record = FastaRecord::from_str(&(&cap[0].to_string()));
+        let fasta_record = FastaRecord::from_str(&cap[0]);
         match fasta_record {
             Ok(fr) => fastas.push(fr),
             Err(e) => return Err(e)
@@ -104,9 +107,8 @@ impl ScoringMatrix {
         let mut matrix: HashMap<(char, char), i32> = HashMap::new();
         let score_re = Regex::new(r"\-*\d+").unwrap();
 
-        let mut i = 0;
         let mut j = 0;
-        for line in &lines[1..] {
+        for (i, line) in lines[1..].iter().enumerate() {
             let scores: Vec<i32> = score_re
                 .find_iter(line)
                 .map(|s| s.as_str().parse().unwrap())
@@ -118,7 +120,6 @@ impl ScoringMatrix {
                 matrix.insert((aa_map[&i], aa_map[&j]), score);
                 j += 1;
             }
-            i += 1;
             j = 0;
         }
 
@@ -331,9 +332,9 @@ mod tests {
     
     #[test]
     fn fasta_from_string() {
-        let fastastring = ">record\nACTG\nGTCA";
+        let fastastring = ">NP_085137.1 zinc finger protein 436 isoform 1 [Homo sapiens]\nACTG\nGTCA";
         let fasta_record = FastaRecord::from_str(fastastring).unwrap();
-        assert_eq!(String::from("record"), fasta_record.name);
+        assert_eq!(String::from("NP_085137.1"), fasta_record.name);
         assert_eq!(String::from("ACTGGTCA"), fasta_record.seq);
     }
     
