@@ -66,11 +66,6 @@ impl ScoringMatrix {
 
     /// Creates a new scoring matrix from set of available options.
     ///
-    /// TODO: Possibly a cleaner way to do this would be to load statics in arrays, then access
-    /// them based on HashMap from chars to scoring matrix indeces. This way you don't have to 
-    /// parse from strings every time. On the other hand, this implementation only adds a fixed 
-    /// constant to the runtime, I think.
-    ///
     /// # Example:
     /// ```
     /// use seqalign::ScoringMatrix;
@@ -157,7 +152,7 @@ impl ScoringMatrix {
     }
 }
 
-/// Stores the results of a pairwise sequence alingment
+/// Stores the results of a pairwise sequence alingment.
 pub struct AlignmentResult {
     query: Vec<char>,
     target: Vec<char>,
@@ -173,6 +168,9 @@ impl AlignmentResult {
     }
     
     /// Returns the pair of sequences corresponding to the optimal alignment.
+    ///
+    /// This method uses the output and traceback matrices associated with a new AlignmentResult
+    /// instance to reconstruct the optimal alignment of query and target sequences.
     pub fn alignment(&self) -> (String, String) {
         let mut a1: Vec<char> = Vec::new();
         let mut a2: Vec<char> = Vec::new();
@@ -259,6 +257,7 @@ impl Aligner {
 
         let mut traceback_matrix = vec![vec![0u8; n + 1]; m + 1];
 
+        /// Calculates the max of a vector of values required to populate a cell.
         fn calc_max(values: Vec<i32>) -> i32 {
             let maxval: &i32 = values
                 .iter()
