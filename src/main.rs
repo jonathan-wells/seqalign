@@ -3,7 +3,7 @@ use clap::Parser;
 
 use seqalign::{Aligner, parse_fastafile};
 
-#[derive(Parser, Debug)]
+#[derive(Parser)]
 #[command(version, about)]
 struct Args {
     #[arg(short, long)]

@@ -20,7 +20,7 @@ pub struct FastaRecord {
 
 impl FromStr for FastaRecord {
     type Err = Error; 
-    /// Convert from input fasta string to FastaRecord
+    /// Convert from input fasta string to `FastaRecord`
     fn from_str(s: &str) -> Result<Self, Error> {
         let record_re = Regex::new(r"(?ms)>(\S+)[^\n]*\n(.+)").unwrap();
         let Some(caps) = record_re.captures(s) else {
@@ -40,12 +40,11 @@ impl FastaRecord {
     }
 }
 
-/// Given a filename, returns a vector of FastaRecords.
+/// Given a filename, returns a vector of `FastaRecords`.
 pub fn parse_fastafile(filename: &str) -> Result<Vec<FastaRecord>, Error> {
     let data = read_to_string(filename);
-    let data = match data {
-        Ok(data) => data,
-        Err(_) => return Err(Error::new(ErrorKind::NotFound, format!("{filename} does not exist")))
+    let Ok(data) = data else { 
+        return Err(Error::new(ErrorKind::NotFound, format!("{filename} does not exist"))) 
     };
     let fasta_re = Regex::new(r"(?ms)(>[^>]+)").unwrap();
     let mut fastas: Vec<FastaRecord> = Vec::new();
@@ -95,7 +94,7 @@ impl ScoringMatrix {
         }
     }
     
-    /// Creates new Scoring Matrix instance from a &str.
+    /// Creates new `ScoringMatrix` instance from a &str.
     fn from_str(input_string: &str) -> Result<Self, Error> {
         let lines: Vec<&str> = input_string.lines().filter(|l| !l.contains('#')).collect(); 
         
@@ -170,7 +169,7 @@ impl AlignmentResult {
     
     /// Returns the pair of sequences corresponding to the optimal alignment.
     ///
-    /// This method uses the output and traceback matrices associated with a new AlignmentResult
+    /// This method uses the output and traceback matrices associated with a new `AlignmentResult`
     /// instance to reconstruct the optimal alignment of query and target sequences.
     pub fn alignment(&self) -> (String, String) {
         let mut a1: Vec<char> = Vec::new();
@@ -182,12 +181,12 @@ impl AlignmentResult {
                 3 => {
                     a1.push('-');
                     a2.push(self.target[j - 1]);
-                    j -= 1
+                    j -= 1;
                 }
                 2 => {
                     a1.push(self.query[i - 1]);
                     a2.push('-');
-                    i -= 1
+                    i -= 1;
                 }
                 1 => {
                     a1.push(self.query[i - 1]);
@@ -212,8 +211,8 @@ impl AlignmentResult {
         let mut score: i32 = 0;
         let mut idx: (usize, usize) = (0, 0);
 
-        for i in 1..self.query.len() + 1 {
-            for j in 1..self.target.len() + 1 {
+        for i in 1..=self.query.len() {
+            for j in 1..=self.target.len() {
                 if self.matrix[i][j] >= score {
                     score = self.matrix[i][j];
                     idx = (i, j);
@@ -233,7 +232,7 @@ pub struct Aligner {
 }
 
 impl Aligner {
-    /// Creates new Aligner instance from given scoring system.
+    /// Creates new `Aligner` instance from given scoring system.
     pub fn new(scoring_matrix: &str, gap_open: i32, gap_extend: i32) -> Result<Self, Error> {
         let scoring_matrix = ScoringMatrix::new(scoring_matrix)?;
         let aligner = Aligner {
@@ -246,6 +245,16 @@ impl Aligner {
 
     /// Returns Smith-Waterman local alignment of two sequences.
     pub fn align(&self, query: &str, target: &str) -> AlignmentResult {
+        
+        /// Calculates the max of a vector of values required to populate a cell.
+        fn calc_max(values: &[i32]) -> i32 {
+            let maxval: &i32 = values
+                .iter()
+                .max()
+                .expect("vector will never be empty.");
+            *maxval
+        }
+        
         let query: Vec<char> = query.chars().collect();
         let target: Vec<char> = target.chars().collect();
 
@@ -258,26 +267,17 @@ impl Aligner {
 
         let mut traceback_matrix = vec![vec![0u8; n + 1]; m + 1];
 
-        /// Calculates the max of a vector of values required to populate a cell.
-        fn calc_max(values: Vec<i32>) -> i32 {
-            let maxval: &i32 = values
-                .iter()
-                .max()
-                .expect("vector will never be empty.");
-            *maxval
-        }
-
-        for i in 1..m + 1 {
-            for j in 1..n + 1 {
+        for i in 1..=m {
+            for j in 1..=n {
                 let seqmatch = f[i - 1][j - 1] + self.scoring_matrix.get(query[i - 1], target[j - 1]);
                 let open_i = f[i - 1][j] - self.gap_open;
                 let open_j = f[i][j - 1] - self.gap_open;
                 let extend_i = g[i - 1][j] - self.gap_extend;
                 let extend_j = h[i][j - 1] - self.gap_extend;
 
-                g[i][j] = calc_max(vec![open_i, extend_i]);
-                h[i][j] = calc_max(vec![open_j, extend_j]);
-                f[i][j] = calc_max(vec![seqmatch, g[i][j], h[i][j], 0i32]);
+                g[i][j] = calc_max(&[open_i, extend_i]);
+                h[i][j] = calc_max(&[open_j, extend_j]);
+                f[i][j] = calc_max(&[seqmatch, g[i][j], h[i][j], 0i32]);
                 
                 traceback_matrix[i][j] = match f[i][j] {
                     x if x == seqmatch => 1,
