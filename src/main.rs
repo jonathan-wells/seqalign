@@ -16,10 +16,10 @@ struct Args {
     scoring_matrix: String,
 
     #[arg(short='g', long)]
-    open_penalty: i32,
+    open_penalty: i16,
 
     #[arg(short='x', long)]
-    extension_penalty: i32,
+    extension_penalty: i16,
 
     #[arg(short, long)]
     output: String,

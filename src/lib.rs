@@ -4,18 +4,189 @@
 //! sequences. Currently only implements Smith-Waterman local alignment with affine gap penalty
 //! (Gotoh), but this may be extended in the future.
 
+#![allow(dead_code, unused_variables)]
+#![feature(portable_simd)]
+
 use regex::Regex;
-use std::io::{Error, ErrorKind};
-use std::{collections::HashMap, fs::read_to_string, str::FromStr};
+use std::{array::from_fn,
+    io::{Error, ErrorKind},
+    collections::HashMap,
+    fs::read_to_string,
+    str::FromStr,
+    simd::i16x8
+};
 
 /// This module provides static strings for each BLOSUM matrix.
 pub mod constants;
 use crate::constants::*;
 
+const LANES: usize = 8;
+const AA_ALPHABET_SIZE: usize = 24;
+const AA_ALPHABET: [char; AA_ALPHABET_SIZE] = [
+    'A', 'R', 'N', 'D', 'C', 'Q', 'E', 'G', 'H', 'I', 'L', 'K',
+    'M', 'F', 'P', 'S', 'T', 'W', 'Y', 'V', 'B', 'Z', 'X', '*'
+];
+
+/// Holds the scoring system and methods required to generate alignments.
+pub struct RognesAligner {
+    scoring_matrix: ScoringMatrix,
+    gap_open: i16x8,
+    gap_extend: i16x8,
+}
+
+impl RognesAligner {
+
+    /// Creates new `Aligner` instance from given scoring system.
+    pub fn new(scoring_matrix: &str, gap_open: i16, gap_extend: i16) -> Result<Self, Error> {
+        let scoring_matrix = ScoringMatrix::new(scoring_matrix)?;
+        let aligner = RognesAligner {
+            scoring_matrix,
+            gap_open: i16x8::splat(gap_open),
+            gap_extend: i16x8::splat(gap_open),
+        };
+        Ok(aligner)
+    }
+
+    /// Returns SIMD-accelerated Smith-Waterman local alignment of two sequences.
+    pub fn align(&self, query: &str, target: &str) -> AlignmentResult {
+    
+        let query: Vec<char> = query.chars().collect();
+        let target: Vec<char> = target.chars().collect();
+
+        // if self.query_profile_flag == false { self.build_query_profile(&query) }
+        let m = query.len();
+        let n = target.len();
+
+        let mut h = vec![vec![0i16; n + 1]; m + 1];
+        let mut e = vec![vec![0i16; n + 1]; m + 1];
+        let mut f = vec![vec![0i16; n + 1]; m + 1];
+
+        let mut traceback_matrix = vec![vec![0u8; n + 1]; m + 1];
+
+        let mut sv_max = i16x8::splat(0);
+        
+        for j in 1..=n {
+            for i in 1..=m {
+                todo!();
+            }
+        }
+        
+        AlignmentResult {
+            query,
+            target,
+            matrix: h,
+            traceback_matrix
+        }
+    }
+
+    fn build_query_profile(&self, query: &str) -> Vec<Vec<i16>> {
+        let query: Vec<char> = query.chars().collect();
+        let m = query.len();
+        let seglen = m + LANES - (m % LANES);
+        
+
+        let query_profile = HashMap::<&'static char, i16x8>::new();
+        for aa in AA_ALPHABET.iter() {
+            let h = 0;
+            for i in 0..seglen {
+                let j = i;
+                let aa_profile = [0i16; LANES];
+                for k in 0..LANES {
+                    todo!();
+                }
+            }
+        }
+        todo!();
+    }
+}
+
+
+/// Defines scoring system for vanilla local pairwise alignment.
+pub struct Aligner {
+    scoring_matrix: ScoringMatrix,
+    gap_open: i16,
+    gap_extend: i16,
+}
+
+impl Aligner {
+    /// Creates new `Aligner` instance from given scoring system.
+    pub fn new(scoring_matrix: &str, gap_open: i16, gap_extend: i16) -> Result<Self, Error> {
+        let scoring_matrix = ScoringMatrix::new(scoring_matrix)?;
+        let aligner = Aligner {
+            scoring_matrix,
+            gap_open,
+            gap_extend,
+        };
+        Ok(aligner)
+    }
+ 
+    /// Returns Smith-Waterman local alignment of two sequences.
+    pub fn align(&self, query: &str, target: &str) -> AlignmentResult {
+        
+        /// Calculates the max of a vector of values required to populate a cell.
+        fn calc_max(values: &[i16]) -> i16 {
+            let maxval: &i16 = values
+                .iter()
+                .max()
+                .expect("vector will never be empty.");
+            *maxval
+        }
+        
+        let query: Vec<char> = query.chars().collect();
+        let target: Vec<char> = target.chars().collect();
+
+        let m = query.len();
+        let n = target.len();
+
+        let mut f = vec![vec![0i16; n + 1]; m + 1];
+        let mut g = vec![vec![0i16; n + 1]; m + 1];
+        let mut h = vec![vec![0i16; n + 1]; m + 1];
+
+        let mut traceback_matrix = vec![vec![0u8; n + 1]; m + 1];
+
+        for i in 1..=m {
+            for j in 1..=n {
+                let seqmatch = f[i - 1][j - 1] + self.scoring_matrix.get(query[i - 1], target[j - 1]);
+                let open_i = f[i - 1][j] - self.gap_open;
+                let open_j = f[i][j - 1] - self.gap_open;
+                let extend_i = g[i - 1][j] - self.gap_extend;
+                let extend_j = h[i][j - 1] - self.gap_extend;
+
+                g[i][j] = calc_max(&[open_i, extend_i]);
+                h[i][j] = calc_max(&[open_j, extend_j]);
+                f[i][j] = calc_max(&[seqmatch, g[i][j], h[i][j], 0i16]);
+                
+                traceback_matrix[i][j] = match f[i][j] {
+                    x if x == seqmatch => 1,
+                    x if x == g[i][j] => 2,
+                    x if x == h[i][j] => 3,
+                    0 => 0,
+                    _ => panic!("Unexpected value encountered in traceback: {:?}", f[i][j]),
+                }
+            }
+        }
+
+        AlignmentResult {
+            query,
+            target,
+            matrix: f,
+            traceback_matrix,
+        }
+    }
+}
+
+
 /// Record for single fasta sequence
 pub struct FastaRecord {
     pub name: String,
     pub seq: String,
+}
+
+impl FastaRecord {
+    /// Returns length of sequence in record
+    pub fn len(&self) -> u32 {
+        self.seq.len() as u32
+    }
 }
 
 impl FromStr for FastaRecord {
@@ -30,13 +201,6 @@ impl FromStr for FastaRecord {
         let mut seq = caps[2].to_string();
         seq.retain(|c| c != '\n');
         Ok(FastaRecord{ name, seq })
-    }
-}
-
-impl FastaRecord {
-    /// Returns length of sequence in record
-    pub fn len(&self) -> u32 {
-        self.seq.len() as u32
     }
 }
 
@@ -61,7 +225,7 @@ pub fn parse_fastafile(filename: &str) -> Result<Vec<FastaRecord>, Error> {
 /// Stores matrices of amino acid pair transition scores (1/2 Bit units).
 #[derive(Debug)]
 pub struct ScoringMatrix {
-    matrix: HashMap<(char, char), i32>,
+    matrix: HashMap<(char, char), i16>,
 }
 
 impl ScoringMatrix {
@@ -103,12 +267,12 @@ impl ScoringMatrix {
             lines[0].chars().filter(|c| *c != ' ').enumerate().collect();
 
         // Create HashMap of amino acid pairs to scores
-        let mut matrix: HashMap<(char, char), i32> = HashMap::new();
+        let mut matrix: HashMap<(char, char), i16> = HashMap::new();
         let score_re = Regex::new(r"\-*\d+").unwrap();
 
         let mut j = 0;
         for (i, line) in lines[1..].iter().enumerate() {
-            let scores: Vec<i32> = score_re
+            let scores: Vec<i16> = score_re
                 .find_iter(line)
                 .map(|s| s.as_str().parse().unwrap())
                 .collect();
@@ -147,7 +311,7 @@ impl ScoringMatrix {
     /// 
     /// The success of this operation is only guaranteed by earlier checks on appropriate input
     /// sequences. 
-    pub fn get(&self, a: char, b: char) -> i32 {
+    pub fn get(&self, a: char, b: char) -> i16 {
         self.matrix[&(a, b)]
     }
 }
@@ -156,13 +320,13 @@ impl ScoringMatrix {
 pub struct AlignmentResult {
     query: Vec<char>,
     target: Vec<char>,
-    matrix: Vec<Vec<i32>>,
+    matrix: Vec<Vec<i16>>,
     traceback_matrix: Vec<Vec<u8>>,
 }
 
 impl AlignmentResult {
     /// Returns the score of the optimal alignment.
-    pub fn max_score(&self) -> i32 {
+    pub fn max_score(&self) -> i16 {
         let idx = self.argmax();
         self.matrix[idx.0][idx.1]
     }
@@ -208,7 +372,7 @@ impl AlignmentResult {
     
     /// Return the indices of the top score in the "f" result matrix.
     fn argmax(&self) -> (usize, usize) {
-        let mut score: i32 = 0;
+        let mut score: i16 = 0;
         let mut idx: (usize, usize) = (0, 0);
 
         for i in 1..=self.query.len() {
@@ -224,79 +388,6 @@ impl AlignmentResult {
     }
 }
 
-/// Holds the scoring system and methodds required to generate alignments.
-pub struct Aligner {
-    scoring_matrix: ScoringMatrix,
-    gap_open: i32,
-    gap_extend: i32,
-}
-
-impl Aligner {
-    /// Creates new `Aligner` instance from given scoring system.
-    pub fn new(scoring_matrix: &str, gap_open: i32, gap_extend: i32) -> Result<Self, Error> {
-        let scoring_matrix = ScoringMatrix::new(scoring_matrix)?;
-        let aligner = Aligner {
-            scoring_matrix,
-            gap_open,
-            gap_extend
-        };
-        Ok(aligner)
-    }
-
-    /// Returns Smith-Waterman local alignment of two sequences.
-    pub fn align(&self, query: &str, target: &str) -> AlignmentResult {
-        
-        /// Calculates the max of a vector of values required to populate a cell.
-        fn calc_max(values: &[i32]) -> i32 {
-            let maxval: &i32 = values
-                .iter()
-                .max()
-                .expect("vector will never be empty.");
-            *maxval
-        }
-        
-        let query: Vec<char> = query.chars().collect();
-        let target: Vec<char> = target.chars().collect();
-
-        let m = query.len();
-        let n = target.len();
-
-        let mut f = vec![vec![0i32; n + 1]; m + 1];
-        let mut g = vec![vec![0i32; n + 1]; m + 1];
-        let mut h = vec![vec![0i32; n + 1]; m + 1];
-
-        let mut traceback_matrix = vec![vec![0u8; n + 1]; m + 1];
-
-        for i in 1..=m {
-            for j in 1..=n {
-                let seqmatch = f[i - 1][j - 1] + self.scoring_matrix.get(query[i - 1], target[j - 1]);
-                let open_i = f[i - 1][j] - self.gap_open;
-                let open_j = f[i][j - 1] - self.gap_open;
-                let extend_i = g[i - 1][j] - self.gap_extend;
-                let extend_j = h[i][j - 1] - self.gap_extend;
-
-                g[i][j] = calc_max(&[open_i, extend_i]);
-                h[i][j] = calc_max(&[open_j, extend_j]);
-                f[i][j] = calc_max(&[seqmatch, g[i][j], h[i][j], 0i32]);
-                
-                traceback_matrix[i][j] = match f[i][j] {
-                    x if x == seqmatch => 1,
-                    x if x == g[i][j] => 2,
-                    x if x == h[i][j] => 3,
-                    0 => 0,
-                    _ => panic!("Unexpected value encountered in traceback: {:?}", f[i][j]),
-                }
-            }
-        }
-
-        AlignmentResult {
-            query,
-            target,
-            matrix: f,
-            traceback_matrix,
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
