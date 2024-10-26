@@ -1,56 +1,66 @@
 use std::io::Error;
 use clap::Parser;
 
-use seqalign::{Aligner, parse_fastafile};
+use seqalign::{Aligner, RognesAligner, parse_fastafile};
 
-#[derive(Parser)]
-#[command(version, about)]
-struct Args {
-    #[arg(short, long)]
-    query: String,
+// #[derive(Parser)]
+// #[command(version, about)]
+// struct Args {
+//     #[arg(short, long)]
+//     query: String,
 
-    #[arg(short, long)]
-    target: String,
+//     #[arg(short, long)]
+//     target: String,
 
-    #[arg(short, long)]
-    scoring_matrix: String,
+//     #[arg(short, long)]
+//     scoring_matrix: String,
 
-    #[arg(short='g', long)]
-    open_penalty: i16,
+//     #[arg(short='g', long)]
+//     open_penalty: i16,
 
-    #[arg(short='x', long)]
-    extension_penalty: i16,
+//     #[arg(short='x', long)]
+//     extension_penalty: i16,
 
-    #[arg(short, long)]
-    output: String,
+//     #[arg(short, long)]
+//     output: String,
 
-}
+// }
+
+// fn main() -> Result<(), Error> {
+//     let args = Args::parse();
+
+//     let aligner = RognesAligner::new(
+//         &args.scoring_matrix,
+//         args.open_penalty,
+//         args.extension_penalty
+//         )?;
+    
+//     let queries = parse_fastafile(&args.query)?;
+//     let targets = parse_fastafile(&args.target)?;
+    
+//     for query_record in &queries {
+//         for target_record in &targets {
+//             let aresult = aligner.align(&query_record.seq, &target_record.seq);
+//             let alignment = aresult.alignment();
+//             println!(">{}\n{}", query_record.name, alignment.0);
+//             println!(">{}\n{}\n--\n", target_record.name, alignment.1);
+//         }
+//     }
+    
+//     Ok(())
+// }
 
 fn main() -> Result<(), Error> {
-    let args = Args::parse();
 
-    let aligner = Aligner::new(
-        &args.scoring_matrix,
-        args.open_penalty,
-        args.extension_penalty
+    let aligner = RognesAligner::new(
+        "BLOSUM62",
+        10,
+        1
         )?;
-    
-    let queries = parse_fastafile(&args.query)?;
-    let targets = parse_fastafile(&args.target)?;
-    
-    // if arecords.len() > 1 || brecords.len() >  1 {
-    //     eprintln!("WARNING: seqalign currently only accepts single pairs.\n\
-    //               Defaulting to first sequence per file.")
-    // }
-    
-    for query_record in &queries {
-        for target_record in &targets {
-            let aresult = aligner.align(&query_record.seq, &target_record.seq);
-            let alignment = aresult.alignment();
-            println!(">{}\n{}", query_record.name, alignment.0);
-            println!(">{}\n{}\n--\n", target_record.name, alignment.1);
-        }
-    }
-    
+
+    let query = "HEAG";
+    let target = "HEAGPAW";
+    let aresult = aligner.align(query, target);
+
     Ok(())
 }

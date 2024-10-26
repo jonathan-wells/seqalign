@@ -8,7 +8,7 @@
 #![feature(portable_simd)]
 
 use regex::Regex;
-use std::{array::from_fn,
+use std::{
     io::{Error, ErrorKind},
     collections::HashMap,
     fs::read_to_string,
@@ -20,12 +20,6 @@ use std::{array::from_fn,
 pub mod constants;
 use crate::constants::*;
 
-const LANES: usize = 8;
-const AA_ALPHABET_SIZE: usize = 24;
-const AA_ALPHABET: [char; AA_ALPHABET_SIZE] = [
-    'A', 'R', 'N', 'D', 'C', 'Q', 'E', 'G', 'H', 'I', 'L', 'K',
-    'M', 'F', 'P', 'S', 'T', 'W', 'Y', 'V', 'B', 'Z', 'X', '*'
-];
 
 /// Holds the scoring system and methods required to generate alignments.
 pub struct RognesAligner {
@@ -46,9 +40,45 @@ impl RognesAligner {
         };
         Ok(aligner)
     }
+    
 
     /// Returns SIMD-accelerated Smith-Waterman local alignment of two sequences.
     pub fn align(&self, query: &str, target: &str) -> AlignmentResult {
+        
+        /// Calculates the max of a non-SIMD vector of values required to populate a cell.
+        fn calc_max(values: &[i16]) -> i16 {
+            let maxval: &i16 = values
+                .iter()
+                .max()
+                .expect("vector will never be empty.");
+            *maxval
+        }
+
+        fn upper_left(k: usize, match_score: i16, gap_open: i16, h: &mut Vec<Vec<i16>>) {
+            for j in k..k+LANES {
+                for i in 1..LANES+k-j {
+                    let seqmatch = h[i - 1][j - 1] + match_score;
+                    let open_i = h[i - 1][j] - gap_open;
+                    let open_j = h[i][j - 1] - gap_open;
+                    h[i][j] = calc_max(&[seqmatch, open_i, open_j, 0i16]);
+                }
+            }
+        }
+
+        fn lower_right(k: usize, m: usize, match_score: i16, gap_open: i16, h: &mut Vec<Vec<i16>>) {
+            for j in k+1..k+LANES {
+                for i in (m-LANES..m).rev() {
+                    let seqmatch = h[i - 1][j - 1] + match_score;
+                    let open_i = h[i - 1][j] - gap_open;
+                    let open_j = h[i][j - 1] - gap_open;
+                    h[i][j] = calc_max(&[seqmatch, open_i, open_j, 0i16]);
+                }
+            }
+        }
+
+        fn simd_block(k: usize) {
+            todo!();
+        }
     
         let query: Vec<char> = query.chars().collect();
         let target: Vec<char> = target.chars().collect();
@@ -58,19 +88,17 @@ impl RognesAligner {
         let n = target.len();
 
         let mut h = vec![vec![0i16; n + 1]; m + 1];
-        let mut e = vec![vec![0i16; n + 1]; m + 1];
-        let mut f = vec![vec![0i16; n + 1]; m + 1];
+        // let mut e = vec![vec![0i16; n + 1]; m + 1];
+        // let mut f = vec![vec![0i16; n + 1]; m + 1];
 
         let mut traceback_matrix = vec![vec![0u8; n + 1]; m + 1];
 
-        let mut sv_max = i16x8::splat(0);
+        // let mut sv_max = i16x8::splat(0);
         
-        for j in 1..=n {
-            for i in 1..=m {
-                todo!();
-            }
-        }
-        
+        // upper_left(k, match_score, gap_open, &mut h);
+        // simd_block(k);
+        // lower_right(k, m, match_score, gap_open, &mut h);
+
         AlignmentResult {
             query,
             target,
