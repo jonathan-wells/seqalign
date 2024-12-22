@@ -9,10 +9,12 @@
 
 use regex::Regex;
 use std::{
+    array,
     io::{Error, ErrorKind},
     collections::HashMap,
-    fs::read_to_string,
     str::FromStr,
+    cmp::{max_by_key, min_by_key},
+    fs::read_to_string,
     simd::i16x8
 };
 
@@ -24,8 +26,10 @@ use crate::constants::*;
 /// Holds the scoring system and methods required to generate alignments.
 pub struct RognesAligner {
     scoring_matrix: ScoringMatrix,
-    gap_open: i16x8,
-    gap_extend: i16x8,
+    gap_open: i16,
+    gap_extend: i16,
+    gap_open_simd: i16x8,
+    gap_extend_simd: i16x8
 }
 
 impl RognesAligner {
@@ -35,8 +39,10 @@ impl RognesAligner {
         let scoring_matrix = ScoringMatrix::new(scoring_matrix)?;
         let aligner = RognesAligner {
             scoring_matrix,
-            gap_open: i16x8::splat(gap_open),
-            gap_extend: i16x8::splat(gap_open),
+            gap_open,
+            gap_extend,
+            gap_open_simd: i16x8::splat(gap_open),
+            gap_extend_simd: i16x8::splat(gap_open),
         };
         Ok(aligner)
     }
@@ -54,38 +60,17 @@ impl RognesAligner {
             *maxval
         }
 
-        fn upper_left(k: usize, match_score: i16, gap_open: i16, h: &mut Vec<Vec<i16>>) {
-            for j in k..k+LANES {
-                for i in 1..LANES+k-j {
-                    let seqmatch = h[i - 1][j - 1] + match_score;
-                    let open_i = h[i - 1][j] - gap_open;
-                    let open_j = h[i][j - 1] - gap_open;
-                    h[i][j] = calc_max(&[seqmatch, open_i, open_j, 0i16]);
-                }
-            }
-        }
+        let tmp_query: Vec<char> = query.chars().collect();
+        let tmp_target: Vec<char> = target.chars().collect();
+        
+        let query = max_by_key(&tmp_query, &tmp_target, |x| x.len()).to_vec();
+        let target = min_by_key(&tmp_query, &tmp_target, |x| x.len()).to_vec();
 
-        fn lower_right(k: usize, m: usize, match_score: i16, gap_open: i16, h: &mut Vec<Vec<i16>>) {
-            for j in k+1..k+LANES {
-                for i in (m-LANES..m).rev() {
-                    let seqmatch = h[i - 1][j - 1] + match_score;
-                    let open_i = h[i - 1][j] - gap_open;
-                    let open_j = h[i][j - 1] - gap_open;
-                    h[i][j] = calc_max(&[seqmatch, open_i, open_j, 0i16]);
-                }
-            }
-        }
-
-        fn simd_block(k: usize) {
-            todo!();
-        }
-    
-        let query: Vec<char> = query.chars().collect();
-        let target: Vec<char> = target.chars().collect();
 
         // if self.query_profile_flag == false { self.build_query_profile(&query) }
         let m = query.len();
         let n = target.len();
+        println!("{m}, {n}");
 
         let mut h = vec![vec![0i16; n + 1]; m + 1];
         // let mut e = vec![vec![0i16; n + 1]; m + 1];
@@ -95,7 +80,59 @@ impl RognesAligner {
 
         // let mut sv_max = i16x8::splat(0);
         
-        // upper_left(k, match_score, gap_open, &mut h);
+        for k in (1..n-LANES).step_by(LANES) {
+            // Upper left triangle
+            for j in k..k+LANES {
+                for i in 1..LANES+k-j {
+                    let seqmatch = h[i - 1][j - 1] + self.scoring_matrix.get(query[i - 1], target[j - 1]);
+                    let open_i = h[i - 1][j] - self.gap_open;
+                    let open_j = h[i][j - 1] - self.gap_open;
+                    // h[i][j] = calc_max(&[seqmatch, open_i, open_j, 0i16]);
+                    h[i][j] = 1;
+                }
+            }
+            
+            // SIMD block
+            for i in LANES..m {
+                let h_antidiagonal = i16x8::from_array(array::from_fn(|x| h[(i - 1) - x][(k - 1) + x]));
+                let seqmatches = i16x8::from_array(array::from_fn(|x| self.scoring_matrix.get(query[(i - 1) - x], target[(k - 1) + x])));
+                let seqmatch_antidiagonal = h_antidiagonal + seqmatches;
+                let open_i_antidiagonal = i16x8::from_array(array::from_fn(|x| h[(i - 1) - x][k + x])) - self.gap_open_simd;
+                let open_j_antidiagonal = i16x8::from_array(array::from_fn(|x| h[i - x][(k - 1) + x])) - self.gap_open_simd;
+                
+                let input_matrix = seqmatch_antidiagonal.to_array();
+                for x in 0..LANES {
+                    h[i-x][k+x] = input_matrix[x];
+                }
+
+            }
+
+            // Lower right triangle
+            for j in k+1..k+LANES {
+                for i in (m-(j-k)..m).rev() {
+                    let seqmatch = h[i - 1][j - 1] + self.scoring_matrix.get(query[i - 1], target[j - 1]);
+                    let open_i = h[i - 1][j] - self.gap_open;
+                    let open_j = h[i][j - 1] - self.gap_open;
+                    // h[i][j] = calc_max(&[seqmatch, open_i, open_j, 0i16]);
+                    h[i][j] = 1;
+                }
+            }
+        }
+        
+        // Fill in trailing edges right of SIMD blocks
+        for i in 1..m {
+            for j in n + 1 -(n % LANES)..n + 1 {
+                let seqmatch = h[i - 1][j - 1] + self.scoring_matrix.get(query[i - 1], target[j - 1]);
+                let open_i = h[i - 1][j] - self.gap_open;
+                let open_j = h[i][j - 1] - self.gap_open;
+                // h[i][j] = calc_max(&[seqmatch, open_i, open_j, 0i16]);
+                h[i][j] = 1;
+            }
+        }
+        
+        for i in 0..m {
+            println!("{:?}", h[i]);
+        }
         // simd_block(k);
         // lower_right(k, m, match_score, gap_open, &mut h);
 

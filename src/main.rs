@@ -54,12 +54,12 @@ fn main() -> Result<(), Error> {
 
     let aligner = RognesAligner::new(
         "BLOSUM62",
-        10,
+        2,
         1
         )?;
 
-    let query = "HEAG";
-    let target = "HEAGPAW";
+    let query = "HHEAGHEAGHEAGHEAGHEAGHEAGHEAGHEAGEAG";
+    let target = "HHEAGHEAGHERAGHEAGHEQAGHEAGHEAGHNEAGEAGLHEAGPAW";
     let aresult = aligner.align(query, target);
 
     Ok(())
