@@ -87,8 +87,7 @@ impl RognesAligner {
                     let seqmatch = h[i - 1][j - 1] + self.scoring_matrix.get(query[i - 1], target[j - 1]);
                     let open_i = h[i - 1][j] - self.gap_open;
                     let open_j = h[i][j - 1] - self.gap_open;
-                    // h[i][j] = calc_max(&[seqmatch, open_i, open_j, 0i16]);
-                    h[i][j] = 1;
+                    h[i][j] = calc_max(&[seqmatch, open_i, open_j, 0i16]);
                 }
             }
             
@@ -113,8 +112,7 @@ impl RognesAligner {
                     let seqmatch = h[i - 1][j - 1] + self.scoring_matrix.get(query[i - 1], target[j - 1]);
                     let open_i = h[i - 1][j] - self.gap_open;
                     let open_j = h[i][j - 1] - self.gap_open;
-                    // h[i][j] = calc_max(&[seqmatch, open_i, open_j, 0i16]);
-                    h[i][j] = 1;
+                    h[i][j] = calc_max(&[seqmatch, open_i, open_j, 0i16]);
                 }
             }
         }
@@ -125,8 +123,7 @@ impl RognesAligner {
                 let seqmatch = h[i - 1][j - 1] + self.scoring_matrix.get(query[i - 1], target[j - 1]);
                 let open_i = h[i - 1][j] - self.gap_open;
                 let open_j = h[i][j - 1] - self.gap_open;
-                // h[i][j] = calc_max(&[seqmatch, open_i, open_j, 0i16]);
-                h[i][j] = 1;
+                h[i][j] = calc_max(&[seqmatch, open_i, open_j, 0i16]);
             }
         }
         
