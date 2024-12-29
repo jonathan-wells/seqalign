@@ -222,6 +222,12 @@ impl AlignmentResult {
 
         idx
     }
+
+    /// Returns the score of the optimal alignment.
+    pub fn score(&self) -> i32 {
+        let idx = self.argmax();
+        self.matrix[idx.0][idx.1]
+    }
 }
 
 /// Holds the scoring system and methodds required to generate alignments.

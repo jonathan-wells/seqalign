@@ -24,6 +24,9 @@ struct Args {
     #[arg(short, long)]
     output: String,
 
+    #[arg(short='m', long)]
+    score: bool,
+
 }
 
 fn main() -> Result<(), Error> {
@@ -49,6 +52,10 @@ fn main() -> Result<(), Error> {
             let alignment = aresult.alignment();
             println!(">{}\n{}", query_record.name, alignment.0);
             println!(">{}\n{}\n--\n", target_record.name, alignment.1);
+            
+            if args.score {
+                println!("Score: {}", aresult.score());
+            }
         }
     }
     
